@@ -1,5 +1,4 @@
 import { Layout, Segmented, Input, Menu } from 'antd'
-// import type { ItemType } from 'antd/es/menu/interface'
 import type { SiderMenuItem } from './MainPage'
 import type React from 'react'
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, Form, Input, Button, message } from 'antd';
-import { LockOutlined, MailOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+import { LockOutlined, MailOutlined, SafetyCertificateOutlined, UserOutlined } from '@ant-design/icons';
 
 interface AuthModalProps {
   open: boolean;
@@ -109,9 +109,17 @@ const AuthModal: React.FC<AuthModalProps> = ({ open, isExisted, onClose }) => {
     <Modal
       open={open}
       title={isExisted ? "找回密码" : "注册账号"}
-      onCancel={onClose}
+      onCancel={() => {
+        form.resetFields();
+        onClose();
+      }}
       footer={null}
       centered
+      styles={{
+        header: {
+          textAlign: 'center', // 标题文本居中
+        }
+      }}
     >
       <Form
         form={form}
@@ -131,6 +139,26 @@ const AuthModal: React.FC<AuthModalProps> = ({ open, isExisted, onClose }) => {
         >
           <Input prefix={<MailOutlined />} placeholder="请输入邮箱" />
         </Form.Item>
+
+        {/* 条件渲染用户名输入框 - 只在注册时显示 */}
+        {!isExisted && (
+          <Form.Item
+            name="username"
+            label="用户名"
+            rules={[
+              { required: true, message: '请输入用户名！' },
+              { min: 2, message: '用户名至少2个字符！' },
+              { max: 20, message: '用户名不能超过20个字符！' },
+              {
+                pattern: /^[a-zA-Z0-9_\u4e00-\u9fa5]+$/,
+                message: '用户名只能包含中文、英文、数字和下划线！',
+              },
+            ]}
+            hasFeedback
+          >
+            <Input prefix={< UserOutlined />} placeholder="请输入用户名" />
+          </Form.Item>
+        )}
 
         {/* 验证码输入框 */}
         <Form.Item
