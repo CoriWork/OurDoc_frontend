@@ -1,0 +1,12 @@
+// 登录账号
+POST
+{
+    'email': email,
+    'password': password
+}
+
+RETURN
+{
+    'user_id': user_id,
+    'user_name': user_name,
+}

@@ -67,7 +67,7 @@ const MainPage: React.FC = () => {
 
   useEffect(() => {
     if (!selectedRoom) return
-
+    console.log("selectedRoom", selectedRoom)
     // destroy old
     binding?.destroy()
     provider?.destroy()
@@ -103,12 +103,10 @@ const MainPage: React.FC = () => {
     // listen to peers
     const handleAwarenessChange = () => {
       const states = Array.from(newProvider.awareness.getStates().values())
-      console.log(states)
+      console.log("states", states)
       setPeers(states.length)
     }
     newProvider.awareness.on('change', handleAwarenessChange)
-
-    handleAwarenessChange()
 
   }, [selectedRoom, editor])
 

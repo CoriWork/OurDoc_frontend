@@ -1,0 +1,10 @@
+// 注册账户
+POST
+{
+    'email': email,
+    'verifyCode': verifyCode,
+    'password': password
+}
+
+RETURN
+// 返回一些确认信息

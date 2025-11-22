@@ -1,0 +1,13 @@
+// 获取该用户全部的共享文档的目录
+GET
+{
+    'user_id': user_id
+}
+
+// 返回这个用户的全部文档列表，这些属性设计一下，我这里主要渲染文档名称和id
+RETURN
+
+    {
+        'doc_id': doc_id,
+        'doc_title': doc_title,
+    }

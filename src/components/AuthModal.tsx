@@ -48,7 +48,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ open, isExisted, onClose }) => {
     timerRef.current = window.setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
-          // 清理将在 effect 中完成
           return 0;
         }
         return prev - 1;
