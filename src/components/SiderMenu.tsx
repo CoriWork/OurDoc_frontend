@@ -1,6 +1,7 @@
-import { Layout, Segmented, Input, Menu } from 'antd'
+import { Layout, Segmented, Input, Menu, Button } from 'antd'
 import type { SiderMenuItem } from './MainPage'
 import type React from 'react'
+import { PlusOutlined } from '@ant-design/icons';
 
 interface SiderMenuProps {
     collapsed: boolean;
@@ -15,42 +16,61 @@ interface SiderMenuProps {
 }
 
 const SiderMenu: React.FC<SiderMenuProps> = ({
-    collapsed, 
-    onCollapse, 
-    mode, 
-    setMode, 
-    searchText, 
-    setSearchText, 
-    filteredItems, 
-    setSelectedRoom 
+    collapsed,
+    onCollapse,
+    mode,
+    setMode,
+    searchText,
+    setSearchText,
+    filteredItems,
+    setSelectedRoom
 }) => {
     return (
         <Layout.Sider collapsible collapsed={collapsed} onCollapse={onCollapse}>
-            <div style={{ padding: 12 }}>
-                <Segmented
-                    options={[
-                        { label: '用户名', value: 'user' },
-                        { label: '房间名', value: 'room' },
-                    ]}
-                    value={mode}
-                    onChange={(val) => setMode(val as 'user' | 'room')}
-                    block
-                />
-                <Input
-                    placeholder="搜索..."
-                    allowClear
-                    value={searchText}
-                    onChange={(e) => setSearchText(e.target.value)}
-                    style={{ marginTop: 12 }}
-                />
-            </div>
+            <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%'
+            }}>
+                <div style={{ padding: 12 }}>
+                    <Segmented
+                        options={[
+                            { label: '用户名', value: 'user' },
+                            { label: '房间名', value: 'room' },
+                        ]}
+                        value={mode}
+                        onChange={(val) => setMode(val as 'user' | 'room')}
+                        block
+                    />
+                    <Input
+                        placeholder="搜索..."
+                        allowClear
+                        value={searchText}
+                        onChange={(e) => setSearchText(e.target.value)}
+                        style={{ marginTop: 12 }}
+                    />
+                </div>
 
-            <Menu
-                theme="dark"
-                mode="inline"
-                items={filteredItems}
-                onClick={(e) => setSelectedRoom(e.key)}
-            />
+                <Menu
+                    theme="dark"
+                    mode="inline"
+                    items={filteredItems}
+                    onClick={(e) => setSelectedRoom(e.key)}
+                    style={{ flex: 1, overflow: 'auto' }}
+                />
+
+                {/* 底部新建按钮 */}
+                <div style={{ padding: '12px', borderTop: '1px solid #434343' }}>
+                    <Button
+                        type="primary"
+                        block
+                        onClick={() => setSelectedRoom(null)}
+                        icon={<PlusOutlined />}
+                    >
+                        {collapsed ? '' : '新建文档'}
+                    </Button>
+                </div>
+            </div>
         </Layout.Sider>
     )
 }

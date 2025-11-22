@@ -118,7 +118,12 @@ export const ContentWithEditorAndPreview: React.FC<ContentWithEditorAndPreviewPr
     peers
 }) => {
     return (
-        <Layout.Content>
+        <Layout.Content style={{
+            display: 'flex',
+            flexDirection: 'column',
+            // height: 'calc(100vh - 64px)' // 或 flex:1 也可以
+            flex: 1
+        }}>
             {/* 文档展示区 + 操作区 */}
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Breadcrumb
@@ -141,7 +146,9 @@ export const ContentWithEditorAndPreview: React.FC<ContentWithEditorAndPreviewPr
                     display: 'flex',
                     gap: showPreview ? '16px' : 0,
                     padding: 24,
-                    height: '90vh',
+                    // height: '90vh',
+                    flex: 1,
+                    overflow: 'hidden',
                     transition: 'all 0.3s ease',
                 }}
             >
@@ -149,10 +156,13 @@ export const ContentWithEditorAndPreview: React.FC<ContentWithEditorAndPreviewPr
                     style={{
                         width: showPreview ? '50%' : '100%',
                         transition: 'width 0.3s ease',
+                        minWidth: 0,
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
                     }}
                 >
                     <Editor
-                        // height="60vh"
                         defaultLanguage="markdown"
                         defaultValue={editorText}
                         theme="vs-dark"

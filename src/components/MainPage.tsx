@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   DesktopOutlined,
   FileOutlined,
@@ -7,14 +7,14 @@ import {
   UserOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
-import { Layout } from 'antd'
+import { Avatar, Button, Dropdown, Layout } from 'antd'
 
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { MonacoBinding } from 'y-monaco'
 
 import SiderMenu from './SiderMenu'
-import {CreateNewDocForm, ContentWithEditorAndPreview} from './ContentWithEditorAndPreview'
+import { CreateNewDocForm, ContentWithEditorAndPreview } from './ContentWithEditorAndPreview'
 import styles from '../components.module.less'
 
 type AntdMenuItem = Required<MenuProps>['items'][number]
@@ -67,6 +67,8 @@ const MainPage: React.FC = () => {
 
   useEffect(() => {
     if (!selectedRoom) return
+    if (!editor) return
+    
     console.log("selectedRoom", selectedRoom)
     // destroy old
     binding?.destroy()
@@ -90,7 +92,7 @@ const MainPage: React.FC = () => {
 
     // bind editor
     let newBinding: MonacoBinding | null = null
-    if(editor) {
+    if (editor) {
       const type = newYdoc.getText('monaco')
       newBinding = new MonacoBinding(type, editor.getModel()!, new Set([editor]), newProvider.awareness)
       setBinding(newBinding)
@@ -153,6 +155,21 @@ const MainPage: React.FC = () => {
     peers
   }
 
+  const accountMenuItems: MenuProps['items'] = [
+    { key: 'docs', label: '个人文档管理' },
+    { type: 'divider' },
+    { key: 'logout', label: '退出登录' },
+  ]
+  
+  const handleAccountMenuClick = useCallback(({ key }: { key: string }) => {
+    if (key === 'docs') {
+      // 应该跳转到个人文档管理页面
+    } else if (key === 'logout') {
+      localStorage.removeItem('token')
+      window.location.href = '/login'
+    }
+  }, [])
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
       {/* ------------------ SIDER ------------------ */}
@@ -162,6 +179,11 @@ const MainPage: React.FC = () => {
         {/* 顶部 Header */}
         <Layout.Header className={styles.header}>
           <div style={{ fontWeight: 600 }}>Markdown 实时协作编辑器</div>
+          <Dropdown menu={{ items: accountMenuItems, onClick: handleAccountMenuClick }} placement="bottomRight" trigger={['click']}>
+            <Button type="text" style={{ padding: 0 }}>
+              <Avatar icon={<UserOutlined />} />
+            </Button>
+          </Dropdown>
         </Layout.Header>
         {/* 主内容区 */}
         {selectedRoom ? <ContentWithEditorAndPreview {...contentWithEditorAndPreviewProps} /> : <CreateNewDocForm />}
