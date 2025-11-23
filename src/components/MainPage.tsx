@@ -16,7 +16,7 @@ import { MonacoBinding } from 'y-monaco'
 import SiderMenu from './SiderMenu'
 import { CreateNewDocForm, ContentWithEditorAndPreview } from './ContentWithEditorAndPreview'
 import styles from '../components.module.less'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 
 type AntdMenuItem = Required<MenuProps>['items'][number]
 
