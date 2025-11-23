@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Breadcrumb, Button, Form, Input, Layout, message } from 'antd';
-import { EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons';
+import { Breadcrumb, Button, Form, Input, Layout, message, Space } from 'antd';
+import { EyeOutlined, EyeInvisibleOutlined, EditOutlined } from '@ant-design/icons';
 import Editor from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
 
@@ -131,13 +131,24 @@ export const ContentWithEditorAndPreview: React.FC<ContentWithEditorAndPreviewPr
                     // 这里目前使用的是key，后续要换成文档的name
                     items={[{ title: selectedRoom }, { title: `online peers: ${peers}` }]}
                 />
-                <Button
-                    type={showPreview ? 'primary' : 'default'}
-                    icon={showPreview ? <EyeInvisibleOutlined /> : <EyeOutlined />}
-                    onClick={() => setShowPreview(!showPreview)}
-                >
-                    {showPreview ? '关闭预览' : '预览'}
-                </Button>
+                <Space style={{ marginTop: 12 }} size={12}>
+                    <Button
+                        type={showPreview ? 'primary' : 'default'}
+                        icon={showPreview ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+                        onClick={() => setShowPreview(!showPreview)}
+                        variant="solid"
+                    >
+                        {showPreview ? '关闭预览' : '预览'}
+                    </Button>
+                    <Button
+                        type='primary'
+                        icon={<EditOutlined />}
+                        onClick={() => { }}
+                        variant="solid"
+                    >
+                        编辑文档
+                    </Button>
+                </Space>
             </div>
 
             {/* 编辑器 + 预览区 */}

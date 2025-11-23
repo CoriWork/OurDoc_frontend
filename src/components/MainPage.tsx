@@ -16,6 +16,7 @@ import { MonacoBinding } from 'y-monaco'
 import SiderMenu from './SiderMenu'
 import { CreateNewDocForm, ContentWithEditorAndPreview } from './ContentWithEditorAndPreview'
 import styles from '../components.module.less'
+import { Navigate, useNavigate } from 'react-router-dom'
 
 type AntdMenuItem = Required<MenuProps>['items'][number]
 
@@ -65,10 +66,12 @@ const MainPage: React.FC = () => {
   // const [connected, setConnected] = useState(false)
   const [peers, setPeers] = useState<number>(1)
 
+  const navigate = useNavigate();
+
   useEffect(() => {
     if (!selectedRoom) return
     if (!editor) return
-    
+
     console.log("selectedRoom", selectedRoom)
     // destroy old
     binding?.destroy()
@@ -160,10 +163,10 @@ const MainPage: React.FC = () => {
     { type: 'divider' },
     { key: 'logout', label: '退出登录' },
   ]
-  
+
   const handleAccountMenuClick = useCallback(({ key }: { key: string }) => {
     if (key === 'docs') {
-      // 应该跳转到个人文档管理页面
+      navigate('../mydocs')
     } else if (key === 'logout') {
       localStorage.removeItem('token')
       window.location.href = '/login'

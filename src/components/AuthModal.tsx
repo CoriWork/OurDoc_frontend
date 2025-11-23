@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Modal, Form, Input, Button, message } from 'antd';
+import { Modal, Form, Input, Button, message, Space } from 'antd';
 import { LockOutlined, MailOutlined, SafetyCertificateOutlined, UserOutlined } from '@ant-design/icons';
 
 interface AuthModalProps {
@@ -169,21 +169,20 @@ const AuthModal: React.FC<AuthModalProps> = ({ open, isExisted, onClose }) => {
           ]}
           hasFeedback
         >
-          <Input
-            prefix={<SafetyCertificateOutlined />}
-            placeholder="请输入验证码"
-            addonAfter={
-              <Button
-                type='link'
-                size="small"
-                onClick={handleGetCode}
-                disabled={countdown > 0}
-              // 可以根据 disabled 加一个灰色样式（antd 默认会把 disabled 按钮灰掉）
-              >
-                {countdown > 0 ? `${countdown}s` : '获取验证码'}
-              </Button>
-            }
-          />
+          <Space.Compact style={{ width: '100%' }}>
+            <Input
+              prefix={<SafetyCertificateOutlined />}
+              placeholder="请输入验证码"
+            />
+            <Button
+              type='primary'
+              size="middle"
+              onClick={handleGetCode}
+              disabled={countdown > 0}
+            >
+              {countdown > 0 ? `${countdown}s` : '获取验证码'}
+            </Button>
+          </Space.Compact>
         </Form.Item>
 
         {/* 密码输入框 */}

@@ -2,6 +2,7 @@ import React from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import LoginPage from './components/LoginPage'
 import MainPage from './components/MainPage'
+import MyDocsPage from './components/MyDocs'
 
 const App: React.FC = () => {
   return (
@@ -10,6 +11,7 @@ const App: React.FC = () => {
         <Route path="/" element={<Navigate to="/login" />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/app" element={<MainPage />} />
+        <Route path='/mydocs' element={<MyDocsPage />} />
       </Routes>
     </Router>
   )
