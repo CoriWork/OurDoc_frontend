@@ -36,7 +36,7 @@ const LoginPage: React.FC = () => {
     // } finally {
     //   setLoading(false);
     // }
-    navigate('../app');
+    navigate('../home');
     setLoading(false);
   };
 

@@ -3,10 +3,11 @@ import { Breadcrumb, Button, Form, Input, Layout, message, Space } from 'antd';
 import { EyeOutlined, EyeInvisibleOutlined, EditOutlined } from '@ant-design/icons';
 import Editor from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
+import * as monaco from 'monaco-editor';
 
 interface ContentWithEditorAndPreviewProps {
     editorText: string;
-    setEditor: React.Dispatch<any>;
+    setEditor: React.Dispatch<monaco.editor.IStandaloneCodeEditor>;
     // 这里默认了room的key是string类型，可能后续需要修改
     selectedRoom: string | null;
     showPreview: boolean;

@@ -111,6 +111,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ open, isExisted, onClose }) => {
       title={isExisted ? "找回密码" : "注册账号"}
       onCancel={() => {
         form.resetFields();
+        if(timerRef.current) {
+            window.clearInterval(timerRef.current);
+            timerRef.current = null;
+        }
+        setCountdown(0)
         onClose();
       }}
       footer={null}
@@ -162,7 +167,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ open, isExisted, onClose }) => {
 
         {/* 验证码输入框 */}
         <Form.Item
-          name="varifyCode"
+          name="verifyCode"
           label="验证码"
           rules={[
             { required: true, message: '请输入验证码！' },
