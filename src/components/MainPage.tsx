@@ -482,20 +482,10 @@ const MainPage: React.FC = () => {
     // props for ContentWithEditorAndPreview
     const contentWithEditorAndPreviewProps = {
         editorText,
-        selectedRoom,
         showPreview,
-        setShowPreview,
-        peers,
         handleEditorMount,
-        connectionStatus,
-        loading,
         hasAccess,
-        // pass down handlers for buttons
-        onEditClick: handleEditButtonClick,
-        onSaveClick: handleSaveButtonClick,
         editingEnabled,
-        avatarInitial,
-        avatarColor: avatarColor(String(displayName)),
     }
 
     const accountMenuItems: MenuProps['items'] = [
