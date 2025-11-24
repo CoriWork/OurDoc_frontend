@@ -1,36 +1,29 @@
-import React, { useState } from 'react';
-import { Breadcrumb, Button, Form, Input, Layout, message, Space } from 'antd';
-import { EyeOutlined, EyeInvisibleOutlined, EditOutlined } from '@ant-design/icons';
-import Editor from '@monaco-editor/react';
+import React from 'react';
+import {Button, Form, Input, Layout, message} from 'antd';
+import Editor, {type OnMount} from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
-import * as monaco from 'monaco-editor';
 
 interface ContentWithEditorAndPreviewProps {
     editorText: string;
-    setEditor: React.Dispatch<monaco.editor.IStandaloneCodeEditor>;
-    // 这里默认了room的key是string类型，可能后续需要修改
-    selectedRoom: string | null;
     showPreview: boolean;
-    setShowPreview: React.Dispatch<React.SetStateAction<boolean>>;
-    peers: number;
+    handleEditorMount: OnMount;
+    hasAccess?: boolean;
+    editingEnabled: boolean;
 }
 
-// 定义表单字段类型
 type CreateDocFormValues = {
     docname: string;
 };
 
 export const CreateNewDocForm: React.FC = () => {
     const [form] = Form.useForm<CreateDocFormValues>();
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = React.useState(false);
 
     const createNewDoc = async (values: CreateDocFormValues) => {
         setLoading(true);
         try {
-            // 调用api创建文档
             await new Promise(resolve => setTimeout(resolve, 1000));
             message.success(`文档 "${values.docname}" 创建成功！`);
-            // 成功后重置表单
             form.resetFields();
         } catch (error) {
             console.error('Form submission error:', error);
@@ -60,16 +53,16 @@ export const CreateNewDocForm: React.FC = () => {
                     maxWidth: '500px',
                 }}
             >
-                <h2 style={{ textAlign: 'center', marginBottom: '32px', color: '#1890ff' }}>
+                <h2 style={{textAlign: 'center', marginBottom: '32px', color: '#1890ff'}}>
                     创建新文档
                 </h2>
 
                 <Form<CreateDocFormValues>
                     form={form}
                     name="createDoc"
-                    labelCol={{ span: 6 }}
-                    wrapperCol={{ span: 18 }}
-                    style={{ maxWidth: 600 }}
+                    labelCol={{span: 6}}
+                    wrapperCol={{span: 18}}
+                    style={{maxWidth: 600}}
                     onFinish={createNewDoc}
                     autoComplete="off"
                     size="large"
@@ -78,29 +71,20 @@ export const CreateNewDocForm: React.FC = () => {
                         label="文档名称"
                         name="docname"
                         rules={[
-                            { required: true, message: '请输入文档名称！' },
-                            { min: 2, message: '文档名称至少2个字符！' },
-                            { max: 50, message: '文档名称不能超过50个字符！' },
+                            {required: true, message: '请输入文档名称！'},
+                            {min: 2, message: '文档名称至少2个字符！'},
+                            {max: 50, message: '文档名称不能超过50个字符！'},
                             {
                                 pattern: /^[a-zA-Z0-9\u4e00-\u9fa5_\-\s]+$/,
                                 message: '文档名称只能包含中文、英文、数字、下划线和减号！',
                             },
                         ]}
                     >
-                        <Input
-                            placeholder="请输入文档名称"
-                            allowClear
-                        />
+                        <Input placeholder="请输入文档名称" allowClear/>
                     </Form.Item>
 
-                    <Form.Item wrapperCol={{ offset: 6, span: 18 }}>
-                        <Button
-                            type="primary"
-                            htmlType="submit"
-                            block
-                            loading={loading}
-                            size="large"
-                        >
+                    <Form.Item wrapperCol={{offset: 6, span: 18}}>
+                        <Button type="primary" htmlType="submit" block loading={loading} size="large">
                             {loading ? '创建中...' : '创建文档'}
                         </Button>
                     </Form.Item>
@@ -110,76 +94,84 @@ export const CreateNewDocForm: React.FC = () => {
     );
 };
 
+// Main content component
 export const ContentWithEditorAndPreview: React.FC<ContentWithEditorAndPreviewProps> = ({
-    editorText,
-    setEditor,
-    selectedRoom,
-    showPreview,
-    setShowPreview,
-    peers
-}) => {
+                                                                                            editorText,
+                                                                                            showPreview,
+                                                                                            handleEditorMount,
+                                                                                            hasAccess = true,
+                                                                                            editingEnabled,
+                                                                                        }) => {
+    // No-access overlay
+    const NoAccessOverlay = () => (
+        <div style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'auto',
+            zIndex: 30,
+        }}>
+            <div style={{
+                background: 'rgba(255,255,255,0.9)',
+                color: '#222',
+                padding: 24,
+                borderRadius: 12,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                textAlign: 'center',
+                maxWidth: 520,
+            }}>
+                <h3 style={{marginBottom: 12}}>无权查看文档内容</h3>
+                <div style={{marginBottom: 16, color: '#666'}}>
+                    你没有查看该文档的权限。
+                </div>
+                <div>
+                    <Button type="primary" onClick={() => window.location.reload()}>刷新重试</Button>
+                </div>
+            </div>
+        </div>
+    )
+
     return (
         <Layout.Content style={{
             display: 'flex',
             flexDirection: 'column',
-            // height: 'calc(100vh - 64px)' // 或 flex:1 也可以
-            flex: 1
+            flex: 1,
+            position: 'relative',
         }}>
-            {/* 文档展示区 + 操作区 */}
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Breadcrumb
-                    style={{ margin: '0 0' }}
-                    // 这里目前使用的是key，后续要换成文档的name
-                    items={[{ title: selectedRoom }, { title: `online peers: ${peers}` }]}
-                />
-                <Space style={{ marginTop: 12 }} size={12}>
-                    <Button
-                        type={showPreview ? 'primary' : 'default'}
-                        icon={showPreview ? <EyeInvisibleOutlined /> : <EyeOutlined />}
-                        onClick={() => setShowPreview(!showPreview)}
-                        variant="solid"
-                    >
-                        {showPreview ? '关闭预览' : '预览'}
-                    </Button>
-                    <Button
-                        type='primary'
-                        icon={<EditOutlined />}
-                        onClick={() => { }}
-                        variant="solid"
-                    >
-                        编辑文档
-                    </Button>
-                </Space>
-            </div>
-
             {/* 编辑器 + 预览区 */}
             <div
                 style={{
                     display: 'flex',
                     gap: showPreview ? '16px' : 0,
                     padding: 24,
-                    // height: '90vh',
                     flex: 1,
                     overflow: 'hidden',
                     transition: 'all 0.3s ease',
+                    position: 'relative',
                 }}
             >
-                <div
-                    style={{
-                        width: showPreview ? '50%' : '100%',
-                        transition: 'width 0.3s ease',
-                        minWidth: 0,
-                        height: '100%',
-                        display: 'flex',
-                        flexDirection: 'column',
-                    }}
-                >
-                    <Editor
-                        defaultLanguage="markdown"
-                        defaultValue={editorText}
-                        theme="vs-dark"
-                        onMount={(editor) => setEditor(editor)}
-                    />
+                <div style={{
+                    width: showPreview ? '50%' : '100%',
+                    transition: 'width 0.3s ease',
+                    minWidth: 0,
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    borderRadius: '8px',
+                }}>
+                    <div style={{flex: 1, minHeight: 0}}>
+                        <Editor
+                            defaultLanguage="markdown"
+                            defaultValue={editorText}
+                            theme="vs-dark"
+                            onMount={handleEditorMount}
+                            options={{automaticLayout: true, minimap: {enabled: false}, readOnly: !editingEnabled}}
+                        />
+                    </div>
                 </div>
 
                 <div
@@ -188,16 +180,22 @@ export const ContentWithEditorAndPreview: React.FC<ContentWithEditorAndPreviewPr
                         opacity: showPreview ? 1 : 0,
                         background: '#1e1e1e',
                         color: '#fff',
-                        // borderRadius: borderRadiusLG,
                         padding: showPreview ? '16px' : 0,
                         overflowY: 'auto',
                         transition: 'all 0.3s ease',
+                        borderRadius: '8px',
                     }}
                 >
                     <ReactMarkdown>{editorText}</ReactMarkdown>
                 </div>
+
+                {/* Blur overlay when no view access */}
+                {!hasAccess && (
+                    <>
+                        <NoAccessOverlay/>
+                    </>
+                )}
             </div>
         </Layout.Content>
-
     );
 };
