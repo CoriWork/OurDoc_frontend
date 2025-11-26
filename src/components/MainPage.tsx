@@ -1,13 +1,10 @@
 // MainPage.tsx
 import React, {useState, useMemo, useEffect, useCallback, useRef} from 'react'
 import {
-    DesktopOutlined,
     FileOutlined,
-    PieChartOutlined,
-    TeamOutlined,
     UserOutlined,
 } from '@ant-design/icons'
-import type {MenuProps} from 'antd'
+import {type MenuProps, message} from 'antd'
 import {Layout, Modal} from 'antd'
 
 import * as Y from 'yjs'
@@ -16,10 +13,18 @@ import {MonacoBinding} from 'y-monaco'
 
 import SiderMenu from './SiderMenu'
 import HomeHeader from './HomeHeader'
-import {CreateNewDocForm, ContentWithEditorAndPreview} from './ContentWithEditorAndPreview'
+import {ContentWithEditorAndPreview} from './ContentWithEditorAndPreview'
 import styles from '../components.module.less'
 import {useNavigate} from 'react-router-dom'
 import type {OnMount} from '@monaco-editor/react'
+import {
+    fetchRooms,
+    getContent,
+    getEditPermission,
+    getReadPermission,
+    type Room,
+    saveContent
+} from "../services/mainPage.ts";
 
 // ---- helper types ----
 type AntdMenuItem = Required<MenuProps>['items'][number]
@@ -38,26 +43,15 @@ function getItem(
     return {label, key, icon, children} as SiderMenuItem
 }
 
-// sample menu data
-const userItems: SiderMenuItem[] = [
-    getItem('Yao-cheng', 'user-1', <UserOutlined/>, [
-        getItem('GuizhouHome', 'room-1'),
-        getItem('ZhejiangHome', 'room-2'),
-    ]),
-    getItem('Xiao-yang', 'user-2', <TeamOutlined/>, [getItem('ShaanxiHome', 'room-3')]),
-]
-
-const roomItems: SiderMenuItem[] = [
-    getItem('GuizhouHome', 'room-1', <DesktopOutlined/>),
-    getItem('ZhejiangHome', 'room-2', <PieChartOutlined/>),
-    getItem('ShaanxiHome', 'room-3', <FileOutlined/>),
-]
-
 // LRU cache max
 const MAX_MODEL_CACHE = 50
 
 const MainPage: React.FC = () => {
+    // userId
+    const userId = localStorage.getItem('userId')
     // sider menu
+    const [rooms, setRooms] = useState<Room[]>([])
+    const [menuLoading, setMenuLoading] = useState<boolean>(true)
     const [collapsed, setCollapsed] = useState(false)
     const [mode, setMode] = useState<'user' | 'room'>('room')
     const [selectedRoom, setSelectedRoom] = useState<string | null>(null)
@@ -94,6 +88,53 @@ const MainPage: React.FC = () => {
 
     const navigate = useNavigate()
 
+    //sider menu
+    const groupRoomsByUser = (rooms: Room[]): SiderMenuItem[] => {
+        const map = new Map<string, Room[]>()
+
+        rooms.forEach(room => {
+            if (!map.has(room.owner_user_name)) {
+                map.set(room.owner_user_name, [])
+            }
+            map.get(room.owner_user_name)!.push(room)
+        })
+
+        const items: SiderMenuItem[] = []
+        map.forEach((rooms, username) => {
+            const children = rooms.map(room => getItem(room.room_name, `room-${room.room_id}`))
+            const icon = <UserOutlined/>
+            items.push(getItem(username, `user-${username}`, icon, children))
+        })
+
+        return items
+    }
+
+    const mapRoomsToMenuItems = (rooms: Room[]): SiderMenuItem[] => {
+        return rooms.map(room => {
+            return getItem(room.room_name, `room-${room.room_id}`, <FileOutlined/>)
+        })
+    }
+
+    const fetchMenuData = async () => {
+        try {
+            setMenuLoading(true)
+            const res = await fetchRooms(userId)
+            console.log(res)
+            setRooms(res)
+        } catch (e) {
+            console.error(e)
+            message.error("加载文档列表失败")
+        } finally {
+            setMenuLoading(false)
+        }
+    }
+
+    useEffect(() => {
+        fetchMenuData()
+        setSelectedRoom('')
+    }, [])
+
+
     // stable user id & display name (for avatar)
     const getOrCreateUserId = () => {
         const key = 'collab-user-id'
@@ -111,7 +152,7 @@ const MainPage: React.FC = () => {
     const userIdRef = useRef<string>(getOrCreateUserId())
 
     // display name (try to read from localStorage or fallback)
-    const displayName = localStorage.getItem('collab-user-name') || localStorage.getItem('user-email') || 'User'
+    const displayName = localStorage.getItem('username') || localStorage.getItem('email') || 'User'
     const avatarInitial = (displayName && String(displayName).charAt(0).toUpperCase()) || 'U'
 
     // color from name hash
@@ -123,22 +164,28 @@ const MainPage: React.FC = () => {
     }
 
     // ========== Permissions placeholders ==========
-    const checkViewPermission = (roomId: string | null): boolean => {
+    const checkViewPermission = async (roomId: string | null): boolean => {
         if (!roomId) return false
-        // placeholder: return true (allow); replace with real logic
-        return true
+        try {
+            const res = getReadPermission(roomId, userId)
+            if (!res) return false
+            return true
+        } catch (e) {
+            console.error(e)
+            return false
+        }
     }
-    const checkEditPermission = (roomId: string | null): boolean => {
+    const checkEditPermission = async (roomId: string | null): boolean => {
         if (!roomId) return false
-        // placeholder: return true (allow); replace with real logic
-        return true
-    }
-
-    // saveDocument stub (does nothing per request)
-    const saveDocument = (roomId: string | null) => {
-        // intentionally empty — implement saving logic here later
-        console.log('saveDocument', roomId)
-        return
+        try {
+            const res = await getEditPermission(roomId, userId)
+            console.log(res)
+            if (!res) return false
+            return true
+        } catch (e) {
+            console.error(e)
+            return false
+        }
     }
 
     // ========== helpers: cleanup, dispose ==========
@@ -353,7 +400,7 @@ const MainPage: React.FC = () => {
     // handle Edit button clicked from Content
     const handleEditButtonClick = () => {
         if (!selectedRoom) return
-        const ok = checkEditPermission(selectedRoom)
+        const ok = checkEditPermission(selectedRoom, userId)
         if (!ok) {
             Modal.warning({
                 title: '权限不足',
@@ -376,9 +423,15 @@ const MainPage: React.FC = () => {
     }
 
     // handle Save button click: call stub saveDocument
-    const handleSaveButtonClick = () => {
-        saveDocument(selectedRoom)
-        // intentionally no further action (as requested)
+    const handleSaveButtonClick = async () => {
+        try {
+            const res = saveContent({room_id: selectedRoom, content: ydocRef.current?.getText('monaco')})
+            console.log(res)
+            message.success('保存成功')
+        } catch (e) {
+            console.error('saveContent error', e)
+            message.error('保存失败')
+        }
     }
 
     // watch selectedRoom changes -> check view permission first then attach or show overlay
@@ -388,7 +441,7 @@ const MainPage: React.FC = () => {
             if (selectedRoom === null) {
                 setHasAccess(true)
             } else {
-                setHasAccess(checkViewPermission(selectedRoom))
+                setHasAccess(checkViewPermission(selectedRoom, userId))
             }
             return
         }
@@ -409,7 +462,7 @@ const MainPage: React.FC = () => {
         }
 
         // check view permission sync placeholder
-        const ok = checkViewPermission(selectedRoom)
+        const ok = checkViewPermission(selectedRoom, userId)
         setHasAccess(ok)
         if (!ok) {
             // don't attach; cleanup any previous collab
@@ -432,7 +485,7 @@ const MainPage: React.FC = () => {
             cleanupCollab()
             disposeAllModels()
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+
     }, [])
 
     // menu filtering (unchanged)
@@ -454,8 +507,8 @@ const MainPage: React.FC = () => {
                 })
                 .filter(Boolean) as SiderMenuItem[]
 
-        return filterMenu(mode === 'user' ? userItems : roomItems)
-    }, [searchText, mode])
+        return filterMenu(mode === 'user' ? groupRoomsByUser(rooms) : mapRoomsToMenuItems(rooms))
+    }, [searchText, mode, rooms])
 
     // account menu click
     const handleAccountMenuClick = useCallback(({key}: { key: string }) => {
@@ -467,6 +520,36 @@ const MainPage: React.FC = () => {
         }
     }, [navigate])
 
+    const initRoomContent = async () => {
+        if (!selectedRoom || !monacoRef.current || !editorRef.current) return
+
+        try {
+            const res = await getContent(selectedRoom)
+            console.log(res)
+            const content = res?.content ?? '# 新文档\n'
+
+            const monaco = monacoRef.current
+            const editor = editorRef.current
+
+            const uri = monaco.Uri.parse(
+                `inmemory://model/${encodeURIComponent(selectedRoom)}.md`
+            )
+            let model = monaco.editor.getModel(uri)
+
+            if (!model) {
+                model = monaco.editor.createModel(content, 'markdown', uri)
+            } else {
+                model.setValue(content)
+            }
+
+            editor.setModel(model)
+            setEditorText(content)
+        } catch (err) {
+            console.error('initRoomContent error:', err)
+            message.error('加载文档内容失败')
+        }
+    }
+
     // props for SiderMenu
     const siderMenuProps = {
         collapsed,
@@ -477,6 +560,7 @@ const MainPage: React.FC = () => {
         setSearchText,
         filteredItems,
         setSelectedRoom,
+        initRoomContent
     }
 
     // props for ContentWithEditorAndPreview
@@ -521,11 +605,7 @@ const MainPage: React.FC = () => {
                 <HomeHeader {...homeHeaderProps} className={styles.header}/>
 
                 {/* Main content area */}
-                {selectedRoom ? (
-                    <ContentWithEditorAndPreview {...contentWithEditorAndPreviewProps} />
-                ) : (
-                    <CreateNewDocForm/>
-                )}
+                <ContentWithEditorAndPreview {...contentWithEditorAndPreviewProps} />
             </Layout>
         </Layout>
     )

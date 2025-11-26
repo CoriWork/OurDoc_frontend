@@ -27,71 +27,30 @@ import {
     LeftOutlined
 } from '@ant-design/icons'
 import {useNavigate} from "react-router-dom";
+import {
+    addUsers, type AddUsersSubmitRequest,
+    changePermission, createDoc, type CreateDocRequest, deleteRoom,
+    type DocumentItem,
+    fetchDocs,
+    fetchUsers,
+    removeUserPermission, renameRoom,
+    updateVisibility,
+    type User
+} from "../services/myDocsPage.ts";
 
 const {Sider, Content} = Layout
 const {Search} = Input
 const {Text} = Typography
 
-// ----------------- types -----------------
-type DocVisibility = 'private' | 'everyone_edit' | 'everyone_read' | 'partial'
-
-type DocumentItem = {
-    id: string
-    title: string
-    createdAt: string
-    visibility: DocVisibility
-    // permissions only used when visibility === 'partial'
-    permissions: Record<
-        string,
-        { userId: string; username: string; email: string; permission: 'edit' | 'read' }
-    >
-}
-
-type User = {
-    id: string
-    username: string
-    email: string
-    avatarColor?: string
-}
-
-// ----------------- mock data (replace with API) -----------------
-const mockUsers: User[] = [
-    {id: 'u1', username: 'alice', email: 'alice@example.com', avatarColor: '#f56a00'},
-    {id: 'u2', username: 'bob', email: 'bob@example.com', avatarColor: '#7265e6'},
-    {id: 'u3', username: 'carol', email: 'carol@example.com', avatarColor: '#ffbf00'},
-    {id: 'u4', username: 'david', email: 'david@example.com', avatarColor: '#00a2ae'},
-    {id: 'u5', username: 'eve', email: 'eve@example.com', avatarColor: '#7fbf7f'},
-]
-
-const mockDocsInitial: DocumentItem[] = [
-    {
-        id: 'doc-1',
-        title: '家庭计划',
-        createdAt: '2025-01-10',
-        visibility: 'partial',
-        permissions: {
-            u1: {userId: 'u1', username: 'alice', email: 'alice@example.com', permission: 'edit'},
-            u2: {userId: 'u2', username: 'bob', email: 'bob@example.com', permission: 'read'},
-        },
-    },
-    {
-        id: 'doc-2',
-        title: '项目说明',
-        createdAt: '2025-02-20',
-        visibility: 'everyone_read',
-        permissions: {},
-    },
-    {
-        id: 'doc-3',
-        title: '私人笔记',
-        createdAt: '2025-03-05',
-        visibility: 'private',
-        permissions: {},
-    },
-]
+const PRIVATE_VIEW = 0
+const EVERYONE_READ = 1
+const EVERYONE_EDIT = 2
+const PARTIAL = 3
 
 // ----------------- Component -----------------
 const MyDocsPage: React.FC = () => {
+    // userId
+    const userId = localStorage.getItem('userId')
     // navigate
     const navigate = useNavigate()
     // docs state (would normally come from API)
@@ -102,7 +61,7 @@ const MyDocsPage: React.FC = () => {
     const [addUserModalVisible, setAddUserModalVisible] = useState(false)
     const [userSearchText, setUserSearchText] = useState('')
     const [selectedUsersInModal, setSelectedUsersInModal] = useState<
-        Array<{ user: User; permission: 'edit' | 'read' }>
+        Array<{ user: User; permission: number }>
     >([])
 
     // rename modal state
@@ -113,68 +72,105 @@ const MyDocsPage: React.FC = () => {
     const [allUsers, setAllUsers] = useState<User[]>([])
 
     useEffect(() => {
-        // load mocks
-        setDocs(mockDocsInitial)
-        setAllUsers(mockUsers)
-        setSelectedDocId(mockDocsInitial[0]?.id ?? null)
+        const fetchData = async () => {
+            try {
+                const docs_res = await fetchDocs(userId)
+                console.log(docs_res)
+                const docs = docs_res.docs
+                setDocs(docs)
+                const users_res = await fetchUsers()
+                const users = users_res.users
+                setAllUsers(users)
+                if (docs.length > 0) setSelectedDocId(docs[0].room_id ?? null)
+                console.log('selectedDocId', selectedDocId)
+                console.log('selectedDoc', selectedDoc)
+            } catch (e) {
+                console.log(e)
+            }
+        }
+
+        fetchData()
     }, [])
 
     const selectedDoc = useMemo(
-        () => docs.find((d) => d.id === selectedDocId) ?? null,
+        () => docs.find((d) => d.room_id === selectedDocId) ?? null,
         [docs, selectedDocId],
     )
 
     // ----- handlers for visibility -----
-    const handleVisibilityChange = (val: DocVisibility) => {
+    const handleVisibilityChange = async (val: number) => {
         if (!selectedDoc) return
-        const newDocs = docs.map((d) =>
-            d.id === selectedDoc.id ? {...d, visibility: val} : d,
-        )
-        setDocs(newDocs)
-        // api:向后端同步
-        message.success('保存可见性设置')
+        try {
+            const res = await updateVisibility({room_id: selectedDoc.room_id, overall_permission: val})
+            console.log(res)
+            const newDocs = docs.map((d) =>
+                d.room_id === selectedDoc.room_id ? {...d, overall_permission: val} : d,
+            )
+            setDocs(newDocs)
+            message.success('保存可见性设置')
+        } catch (e) {
+            console.log(e)
+            message.error('保存新可见性出错')
+        }
     }
 
     // ----- permissions helper functions -----
-    const listPermissions = selectedDoc
-        //因为permissions是一个Record[]，所以values提取出Record的所有的键值对的值
+    const listPermissions = selectedDoc?.permissions
         ? Object.values(selectedDoc.permissions).sort((a, b) =>
-            a.username.localeCompare(b.username),
+            a.user_name.localeCompare(b.user_name),
         )
         : []
 
-    const handleRemovePermission = (userId: string) => {
+    const handleRemovePermission = async (userId: string) => {
         if (!selectedDoc) return
-        const newPermissions = {...selectedDoc.permissions}
-        delete newPermissions[userId]
-        const newDocs = docs.map((d) =>
-            d.id === selectedDoc.id ? {...d, permissions: newPermissions} : d,
-        )
-        setDocs(newDocs)
-        message.success('已移除该用户权限')
+        try {
+            const res = await removeUserPermission({room_id: selectedDoc.room_id, user_id: userId})
+            console.log(res)
+            const newPermissions = {...selectedDoc.permissions}
+            delete newPermissions[userId]
+            const newDocs = docs.map((d) =>
+                d.room_id === selectedDoc.room_id ? {...d, permissions: newPermissions} : d,
+            )
+            setDocs(newDocs)
+            message.success('已移除该用户权限')
+        } catch (e) {
+            console.log(e)
+            message.error('移除用户权限异常')
+        }
     }
 
-    const handleChangePermission = (userId: string, permission: 'edit' | 'read') => {
+    const handleChangePermission = async (userId: string, permission: 3 | 2) => {
         if (!selectedDoc) return
-        const newPermissions = {
-            ...selectedDoc.permissions,
-            [userId]: {...(selectedDoc.permissions[userId] || {userId, username: '', email: ''}), permission},
+        try {
+            const res = await changePermission({room_id: selectedDoc.room_id, user_id: userId, permission: permission})
+            console.log(res)
+            const newPermissions = {
+                ...selectedDoc.permissions,
+                [userId]: {...(selectedDoc.permissions[userId] || {userId, username: '', email: ''}), permission},
+            }
+            // ensure username/email filled from allUsers
+            const u = allUsers.find((x) => x.id === userId)
+            if (u) {
+                newPermissions[userId].user_name = u.user_name
+                newPermissions[userId].email = u.email
+            }
+            const newDocs = docs.map((d) =>
+                d.room_id === selectedDoc.room_id ? {...d, permissions: newPermissions} : d,
+            )
+            setDocs(newDocs)
+            message.success('权限修改成功')
+        } catch (e) {
+            console.log(e)
+            message.error('权限修改失败')
         }
-        // ensure username/email filled from allUsers
-        const u = allUsers.find((x) => x.id === userId)
-        if (u) {
-            newPermissions[userId].username = u.username
-            newPermissions[userId].email = u.email
-        }
-        const newDocs = docs.map((d) =>
-            d.id === selectedDoc.id ? {...d, permissions: newPermissions} : d,
-        )
-        setDocs(newDocs)
-        message.success('权限修改成功')
+
     }
 
     // ----- add users modal logic -----
-    const openAddUsers = () => {
+    const openAddUsers = async () => {
+        const res = await fetchUsers()
+        console.log(res)
+
         setSelectedUsersInModal([])
         setUserSearchText('')
         setAddUserModalVisible(true)
@@ -188,7 +184,7 @@ const MyDocsPage: React.FC = () => {
         const q = userSearchText.trim().toLowerCase()
         if (!q) return allUsers
         return allUsers.filter(
-            (u) => u.username.toLowerCase().includes(q) || u.email.toLowerCase().includes(q),
+            (u) => u.user_name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q),
         )
     }, [allUsers, userSearchText])
 
@@ -197,17 +193,17 @@ const MyDocsPage: React.FC = () => {
         if (exists) {
             setSelectedUsersInModal((prev) => prev.filter((s) => s.user.id !== user.id))
         } else {
-            setSelectedUsersInModal((prev) => [...prev, {user, permission: 'read'}])
+            setSelectedUsersInModal((prev) => [...prev, {user, permission: 2}])
         }
     }
 
-    const setPermissionForSelectedUser = (userId: string, permission: 'edit' | 'read') => {
+    const setPermissionForSelectedUser = (userId: string, permission: 3 | 2) => {
         setSelectedUsersInModal((prev) =>
             prev.map((p) => (p.user.id === userId ? {...p, permission} : p)),
         )
     }
 
-    const handleAddUsersSubmit = () => {
+    const handleAddUsersSubmit = async () => {
         if (!selectedDoc) {
             message.error('请选择要添加权限的文档')
             return
@@ -216,21 +212,36 @@ const MyDocsPage: React.FC = () => {
             message.warning('请先选择用户')
             return
         }
-        const newPermissions = {...(selectedDoc.permissions || {})}
-        selectedUsersInModal.forEach((s) => {
-            newPermissions[s.user.id] = {
-                userId: s.user.id,
-                username: s.user.username,
-                email: s.user.email,
-                permission: s.permission,
+        try {
+            const reqData: AddUsersSubmitRequest = {
+                room_id: selectedDoc.room_id,
+                users: selectedUsersInModal.map(u => ({
+                    user_id: u.user.id,
+                    permission: u.permission
+                }))
             }
-        })
-        const newDocs = docs.map((d) =>
-            d.id === selectedDoc.id ? {...d, permissions: newPermissions} : d,
-        )
-        setDocs(newDocs)
-        setAddUserModalVisible(false)
-        message.success('添加用户并设置权限成功')
+            const res = await addUsers(reqData)
+            console.log(res)
+            const newPermissions = {...(selectedDoc.permissions || {})}
+            selectedUsersInModal.forEach((s) => {
+                newPermissions[s.user.id] = {
+                    id: s.user.id,
+                    user_name: s.user.user_name,
+                    email: s.user.email,
+                    permission: s.permission,
+                }
+            })
+            const newDocs = docs.map((d) =>
+                d.room_id === selectedDoc.room_id ? {...d, permissions: newPermissions} : d,
+            )
+            setDocs(newDocs)
+            setAddUserModalVisible(false)
+            message.success('添加用户并设置权限成功')
+        } catch (e) {
+            console.log(e)
+            message.error('添加用户并设置权限失败')
+        }
+
     }
 
     // ----- rename logic -----
@@ -239,7 +250,7 @@ const MyDocsPage: React.FC = () => {
             message.warning('请选择要重命名的文档')
             return
         }
-        setRenameValue(selectedDoc.title)
+        setRenameValue(selectedDoc.room_name)
         setRenameModalVisible(true)
     }
 
@@ -248,41 +259,53 @@ const MyDocsPage: React.FC = () => {
         setRenameValue('')
     }
 
-    const handleRenameSubmit = () => {
+    const handleRenameSubmit = async () => {
         if (!selectedDoc) return
-        const newName = renameValue.trim()
-        if (!newName) {
-            message.warning('文档名称不能为空')
-            return
+        try {
+            const newName = renameValue.trim()
+            if (!newName) {
+                message.warning('文档名称不能为空')
+                return
+            }
+            const res = await renameRoom({room_id: selectedDocId, room_name: newName})
+            console.log(res)
+            const newDocs = docs.map((d) => (d.room_id === selectedDocId ? {...d, room_name: newName} : d))
+            console.log(newDocs)
+            setDocs(newDocs)
+            setRenameModalVisible(false)
+            message.success('重命名成功')
+        } catch (e) {
+            console.log(e)
+            message.error('重命名失败')
         }
-        // optional: check duplicate name in docs
-        if (docs.some((d) => d.id !== selectedDoc.id && d.title === newName)) {
-            message.error('已有同名文档，请换个名字')
-            return
-        }
-        const newDocs = docs.map((d) => (d.id === selectedDoc.id ? {...d, title: newName} : d))
-        setDocs(newDocs)
-        setRenameModalVisible(false)
-        message.success('重命名成功')
     }
 
     // ----- delete document -----
-    const handleDeleteDocument = (docId: string) => {
-        setDocs((prev) => prev.filter((d) => d.id !== docId))
-        message.success('删除文档成功')
-        // pick another doc if any
-        setSelectedDocId((prev) => {
-            if (prev !== docId) return prev
-            const remaining = docs.filter((d) => d.id !== docId)
-            return remaining[0]?.id ?? null
-        })
+    const handleDeleteDocument = async (docId: string) => {
+        try {
+            const res = await deleteRoom({room_id: docId})
+            console.log(res)
+            const newDocs_res = await fetchDocs(userId)
+            const newDocs = newDocs_res.docs
+            setDocs(newDocs)
+            setSelectedDocId((prev) => {
+                if (prev !== docId) return prev
+                return docs[0]?.room_id ?? null
+            })
+            message.success('删除文档成功')
+        } catch (e) {
+            console.log(e)
+            message.error('删除文档失败')
+        }
     }
 
     // ----- UI render helpers -----
-    const menuItems: MenuProps['items'] = docs.map((d) => ({
-        key: d.id,
-        label: d.title,
-    }))
+    const menuItems = useMemo<MenuProps['items']>(() => {
+        return docs.map(d => ({
+            key: d.room_id,
+            label: d.room_name,
+        }))
+    }, [docs])
 
     const permissionColumns = [
         {
@@ -292,10 +315,10 @@ const MyDocsPage: React.FC = () => {
             render: (_: any, record: any) => (
                 <Space>
                     <Avatar style={{backgroundColor: '#87d068'}}>
-                        {String(record.username || record.email || '?').charAt(0).toUpperCase()}
+                        {String(record.user_name || record.email || '?').charAt(0).toUpperCase()}
                     </Avatar>
                     <div>
-                        <div>{record.username}</div>
+                        <div>{record.user_name}</div>
                         <div style={{color: '#999', fontSize: 12}}>{record.email}</div>
                     </div>
                 </Space>
@@ -310,15 +333,15 @@ const MyDocsPage: React.FC = () => {
                 <Space>
                     <Button
                         size="small"
-                        type={record.permission === 'edit' ? 'primary' : 'default'}
-                        onClick={() => handleChangePermission(record.userId, 'edit')}
+                        type={record.permission === 3 ? 'primary' : 'default'}
+                        onClick={() => handleChangePermission(record.id, 3)}
                     >
                         可编辑
                     </Button>
                     <Button
                         size="small"
-                        type={record.permission === 'read' ? 'primary' : 'default'}
-                        onClick={() => handleChangePermission(record.userId, 'read')}
+                        type={record.permission === 2 ? 'primary' : 'default'}
+                        onClick={() => handleChangePermission(record.id, 3)}
                     >
                         只读
                     </Button>
@@ -331,8 +354,8 @@ const MyDocsPage: React.FC = () => {
             width: 120,
             render: (_: any, record: any) => (
                 <Popconfirm
-                    title={`确认移除 ${record.username} 的权限吗？`}
-                    onConfirm={() => handleRemovePermission(record.userId)}
+                    title={`确认移除 ${record.user_name} 的权限吗？`}
+                    onConfirm={() => handleRemovePermission(record.id)}
                 >
                     <Button danger size="small" icon={<DeleteOutlined/>}>
                         移除
@@ -350,18 +373,29 @@ const MyDocsPage: React.FC = () => {
                     <Button
                         icon={<PlusOutlined/>}
                         type="primary"
-                        onClick={() => {
+                        onClick={async () => {
                             // create a new doc quickly
-                            const newDoc: DocumentItem = {
-                                id: `doc-${Date.now()}`,
-                                title: `新文档 ${docs.length + 1}`,
-                                createdAt: new Date().toISOString(),
-                                visibility: 'private',
-                                permissions: {},
+                            const newDocReq: CreateDocRequest = {
+                                user_id: userId,
+                                room_name: `新文档 ${docs.length + 1}`,
                             }
-                            setDocs((prev) => [newDoc, ...prev])
-                            setSelectedDocId(newDoc.id)
-                            message.success('已创建新文档（临时）')
+                            try {
+                                const res = await createDoc(newDocReq)
+                                console.log(res)
+                                const newDoc: DocumentItem = {
+                                    room_id: res.room_id,
+                                    room_name: res.room_name,
+                                    create_time: res.create_time,
+                                    overall_permission: res.overall_permission,
+                                    permissions: {}
+                                }
+                                setDocs((prev) => [newDoc, ...prev])
+                                setSelectedDocId(newDoc.room_id)
+                                message.success('已创建新文档')
+                            } catch (e) {
+                                console.log(e)
+                                message.error('创建新文档失败')
+                            }
                         }}
                     >
                         新建
@@ -387,7 +421,7 @@ const MyDocsPage: React.FC = () => {
                         <div style={{display: 'flex', gap: 16}}>
                             <div style={{flex: 1}}>
                                 <Card
-                                    title={selectedDoc.title}
+                                    title={selectedDoc.room_name}
                                     extra={
                                         <Space>
                                             <Button icon={<EditOutlined/>} onClick={openRenameModal}>
@@ -403,17 +437,17 @@ const MyDocsPage: React.FC = () => {
 
                                     <Radio.Group
                                         onChange={(e) => handleVisibilityChange(e.target.value)}
-                                        value={selectedDoc.visibility}
+                                        value={selectedDoc.overall_permission}
                                     >
                                         <Space direction="vertical">
-                                            <Radio value="private">私密（仅我可见）</Radio>
-                                            <Radio value="everyone_edit">所有人可编辑</Radio>
-                                            <Radio value="everyone_read">所有人可阅读</Radio>
-                                            <Radio value="partial">部分人可见 / 可编辑</Radio>
+                                            <Radio value={0}>私密（仅我可见）</Radio>
+                                            <Radio value={1}>所有人可编辑</Radio>
+                                            <Radio value={2}>所有人可阅读</Radio>
+                                            <Radio value={3}>部分人可见 / 可编辑</Radio>
                                         </Space>
                                     </Radio.Group>
 
-                                    {selectedDoc.visibility === 'partial' && (
+                                    {selectedDoc.overall_permission === 3 && (
                                         <div style={{marginTop: 20}}>
                                             <div style={{
                                                 display: 'flex',
@@ -451,7 +485,7 @@ const MyDocsPage: React.FC = () => {
                                         <Popconfirm
                                             title="确认删除该文档？此操作无法撤销。"
                                             icon={<ExclamationCircleOutlined/>}
-                                            onConfirm={() => handleDeleteDocument(selectedDoc.id)}
+                                            onConfirm={() => handleDeleteDocument(selectedDoc?.room_id)}
                                         >
                                             <Button danger icon={<DeleteOutlined/>}>
                                                 删除文档
@@ -466,18 +500,18 @@ const MyDocsPage: React.FC = () => {
                                 <Card title="文档信息">
                                     <div>
                                         <div><Text type="secondary">ID</Text></div>
-                                        <div style={{marginBottom: 8}}>{selectedDoc.id}</div>
+                                        <div style={{marginBottom: 8}}>{selectedDoc.room_id}</div>
 
                                         <div><Text type="secondary">创建时间</Text></div>
-                                        <div style={{marginBottom: 8}}>{selectedDoc.createdAt}</div>
+                                        <div style={{marginBottom: 8}}>{selectedDoc.create_time}</div>
 
                                         <div><Text type="secondary">当前公开性</Text></div>
                                         <div style={{marginBottom: 8}}>
                                             <Tag>
-                                                {selectedDoc.visibility === 'private' && '私密'}
-                                                {selectedDoc.visibility === 'everyone_edit' && '所有人可编辑'}
-                                                {selectedDoc.visibility === 'everyone_read' && '所有人可阅读'}
-                                                {selectedDoc.visibility === 'partial' && '部分人可见'}
+                                                {selectedDoc.overall_permission === PRIVATE_VIEW && '私密'}
+                                                {selectedDoc.overall_permission === EVERYONE_READ && '所有人可编辑'}
+                                                {selectedDoc.overall_permission === EVERYONE_EDIT && '所有人可阅读'}
+                                                {selectedDoc.overall_permission === PARTIAL && '部分人可见'}
                                             </Tag>
                                         </div>
                                     </div>
@@ -543,8 +577,8 @@ const MyDocsPage: React.FC = () => {
                                     >
                                         <List.Item.Meta
                                             avatar={<Avatar
-                                                style={{backgroundColor: '#7265e6'}}>{user.username.charAt(0).toUpperCase()}</Avatar>}
-                                            title={<div>{user.username}</div>}
+                                                style={{backgroundColor: '#7265e6'}}>{user.user_name.charAt(0).toUpperCase()}</Avatar>}
+                                            title={<div>{user.user_name}</div>}
                                             description={<div style={{fontSize: 12}}>{user.email}</div>}
                                         />
                                         <div>
@@ -570,23 +604,23 @@ const MyDocsPage: React.FC = () => {
                                 <List.Item
                                     style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                                     <List.Item.Meta
-                                        avatar={<Avatar>{item.user.username.charAt(0).toUpperCase()}</Avatar>}
-                                        title={item.user.username}
+                                        avatar={<Avatar>{item.user.user_name.charAt(0).toUpperCase()}</Avatar>}
+                                        title={item.user.user_name}
                                         description={<div style={{fontSize: 12}}>{item.user.email}</div>}
                                     />
                                     <div>
                                         <Space>
                                             <Button
                                                 size="small"
-                                                type={item.permission === 'edit' ? 'primary' : 'default'}
-                                                onClick={() => setPermissionForSelectedUser(item.user.id, 'edit')}
+                                                type={item.permission === 3 ? 'primary' : 'default'}
+                                                onClick={() => setPermissionForSelectedUser(item.user.id, 3)}
                                             >
                                                 可编辑
                                             </Button>
                                             <Button
                                                 size="small"
-                                                type={item.permission === 'read' ? 'primary' : 'default'}
-                                                onClick={() => setPermissionForSelectedUser(item.user.id, 'read')}
+                                                type={item.permission === 2 ? 'primary' : 'default'}
+                                                onClick={() => setPermissionForSelectedUser(item.user.id, 2)}
                                             >
                                                 只读
                                             </Button>
