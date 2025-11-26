@@ -12,7 +12,6 @@ interface SiderMenuProps {
     setSearchText: React.Dispatch<React.SetStateAction<string>>;
     filteredItems: SiderMenuItem[];
     setSelectedRoom: React.Dispatch<React.SetStateAction<string | null>>;
-    initRoomContent: () => Promise<void>;
 }
 
 const SiderMenu: React.FC<SiderMenuProps> = ({
@@ -24,7 +23,6 @@ const SiderMenu: React.FC<SiderMenuProps> = ({
                                                  setSearchText,
                                                  filteredItems,
                                                  setSelectedRoom,
-                                                 initRoomContent
 
                                              }) => {
     return (
@@ -59,7 +57,6 @@ const SiderMenu: React.FC<SiderMenuProps> = ({
                     items={filteredItems}
                     onClick={(e) => {
                         setSelectedRoom(e.key)
-                        initRoomContent()
                     }}
                     style={{flex: 1, overflow: 'auto'}}
                 />
