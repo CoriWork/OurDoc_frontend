@@ -33,9 +33,12 @@ const LoginPage: React.FC = () => {
             console.log(res);
             message.success('登录成功');
             form.resetFields();
-            localStorage.setItem('userId', res.userId);
-            localStorage.setItem('email', values.email);
-            navigate('../home');
+            navigate('../home', {
+                state: {
+                    userId: res.userId,
+                    email: values.email,
+                }
+            });
         } catch (e) {
             const err = e as AxiosError<{ detail: string }>;
             if (err.response?.status === 400) {

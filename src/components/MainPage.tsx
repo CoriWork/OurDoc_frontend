@@ -1,25 +1,24 @@
 // MainPage.tsx
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { FileOutlined, UserOutlined } from '@ant-design/icons';
 import { Layout, Modal, message, type MenuProps } from 'antd';
-import * as Y from 'yjs';
-import { WebsocketProvider } from 'y-websocket';
-import { MonacoBinding } from 'y-monaco';
+import * as monaco from 'monaco-editor';
+import { useLocation, useNavigate } from 'react-router-dom';
+import type { OnMount } from '@monaco-editor/react';
 
 import SiderMenu from './SiderMenu';
 import HomeHeader from './HomeHeader';
 import { ContentWithEditorAndPreview } from './ContentWithEditorAndPreview';
 import styles from '../components.module.less';
-import { useNavigate } from 'react-router-dom';
-import type { OnMount } from '@monaco-editor/react';
+
 import {
     fetchRooms,
     getContent,
     getEditPermission,
     getReadPermission,
-    type Room,
     saveContent,
-} from '../services/mainPage.ts';
+    type Room,
+} from '../services/mainPage';
 
 // ---- helper types ----
 type AntdMenuItem = Required<MenuProps>['items'][number];
@@ -38,11 +37,10 @@ function getItem(
     return { label, key, icon, children } as SiderMenuItem;
 }
 
-// LRU cache max
-const MAX_MODEL_CACHE = 50;
-
 const MainPage: React.FC = () => {
-    const userId = localStorage.getItem('userId');
+    // userId
+    const location = useLocation();
+    const { userId, email } = (location.state || {}) as { userId?: string; email?: string };
 
     // Sider & rooms
     const [rooms, setRooms] = useState<Room[]>([]);
@@ -50,35 +48,25 @@ const MainPage: React.FC = () => {
     const [collapsed, setCollapsed] = useState(false);
     const [mode, setMode] = useState<'user' | 'room'>('room');
     const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
-    const [searchText, setSearchText] = useState('');
+    const [connectionStatus, setConnectionStatus] = useState<string | null>(null)
 
-    // Editor / preview
-    const [editorText, setEditorText] = useState('# 欢迎使用共享文档');
+    // preview text (derived from editor)
+    const [editorText, setEditorText] = useState('');
     const [showPreview, setShowPreview] = useState(false);
 
-    // Monaco / Yjs refs
-    const editorRef = useRef<any | null>(null);
-    const monacoRef = useRef<any | null>(null);
-    const ydocRef = useRef<Y.Doc | null>(null);
-    const providerRef = useRef<WebsocketProvider | null>(null);
-    const bindingRef = useRef<any | null>(null);
-    const modelCacheRef = useRef<Map<string, any>>(new Map());
+    // Monaco editor instance ref
+    const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 
-    // Connection & peers
+    // Connection-like UI (kept simple)
     const [loading, setLoading] = useState(false);
-    const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting' | null>(null);
-    const [connectedRoom, setConnectedRoom] = useState<string | null>(null);
-    const [peers, setPeers] = useState<number>(0);
 
-    // Permission
+    // Permission / editing toggle
     const [hasAccess, setHasAccess] = useState<boolean>(true);
     const [editingEnabled, setEditingEnabled] = useState<boolean>(false);
 
-    const switchCounterRef = useRef(0);
     const navigate = useNavigate();
 
     // -------------------- utils --------------------
-
     const fetchMenuData = async () => {
         try {
             setMenuLoading(true);
@@ -95,152 +83,98 @@ const MainPage: React.FC = () => {
     useEffect(() => {
         fetchMenuData();
         setSelectedRoom('');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const getOrCreateUserId = () => {
-        const key = 'collab-user-id';
-        try {
-            let id = localStorage.getItem(key);
-            if (!id) {
-                id = `uid-${Math.random().toString(36).slice(2, 10)}`;
-                localStorage.setItem(key, id);
-            }
-            return id;
-        } catch {
-            return `uid-${Math.random().toString(36).slice(2, 10)}`;
-        }
-    };
-    const userIdRef = useRef<string>(getOrCreateUserId());
-    const displayName = localStorage.getItem('username') || localStorage.getItem('email') || 'User';
-    const avatarInitial = displayName.charAt(0).toUpperCase();
-    const avatarColor = (s: string) => {
-        let h = 0;
-        for (let i = 0; i < s.length; i++) h = (h << 5) - h + s.charCodeAt(i);
-        return `hsl(${Math.abs(h) % 360} 70% 45%)`;
-    };
+    // -------------------- editor mount --------------------
+    const handleEditorMount: OnMount = (editor) => {
+        editorRef.current = editor as monaco.editor.IStandaloneCodeEditor;
 
-    // -------------------- cleanup --------------------
-    const cleanupCollab = () => {
+        // ensure preview text sync initially
         try {
-            bindingRef.current?.destroy?.();
-            providerRef.current?.disconnect?.();
-            providerRef.current?.destroy?.();
-            ydocRef.current?.destroy?.();
-            bindingRef.current = null;
-            providerRef.current = null;
-            ydocRef.current = null;
-            setConnectionStatus(null);
-            setPeers(0);
+            const val = editorRef.current.getValue();
+            setEditorText(val ?? '');
         } catch (e) {
-            console.error('cleanupCollab error', e);
+            setEditorText('');
         }
     };
 
-    const ensureModelCacheLimit = () => {
+    // -------------------- permission helpers --------------------
+    const checkViewPermission = async (roomId: string | null): Promise<boolean> => {
+        if (!roomId) return false;
         try {
-            const cache = modelCacheRef.current;
-            while (cache.size > MAX_MODEL_CACHE) {
-                const oldestKey = cache.keys().next().value;
-                const oldestModel = cache.get(oldestKey);
-                oldestModel?.dispose?.();
-                cache.delete(oldestKey);
-            }
+            const res = await getReadPermission(roomId, userId);
+            return !!res;
         } catch (e) {
-            console.error('ensureModelCacheLimit error', e);
+            console.error('getReadPermission error', e);
+            return false;
+        }
+    };
+    const checkEditPermission = async (roomId: string | null, uId?: string): Promise<boolean> => {
+        if (!roomId) return false;
+        try {
+            const res = await getEditPermission(roomId, uId || userId);
+            return !!res;
+        } catch (e) {
+            console.error('getEditPermission error', e);
+            return false;
         }
     };
 
-    // -------------------- attach room --------------------
-    const attachToRoom = async (roomId: string) => {
-        const monaco = monacoRef.current;
-        const editor = editorRef.current;
-        if (!monaco || !editor) return;
-        if (connectedRoom === roomId) return;
-
-        const mySwitch = ++switchCounterRef.current;
+    // -------------------- Sync (pull remote -> editor) --------------------
+    const handleSyncButtonClick = async (selectedRoom: string) => {
+        if (!selectedRoom) {
+            message.warning('请先选择一个文档再同步');
+            return;
+        }
         setLoading(true);
-        setConnectionStatus('connecting');
-
-        cleanupCollab();
-
+        /////connecting
+        setConnectionStatus('disconnected')
         try {
-            const uriStr = `inmemory://model/${encodeURIComponent(roomId)}.md`;
-            const uri = monaco.Uri.parse(uriStr);
-            let model = monaco.editor.getModel(uri);
-            if (!model) model = monaco.editor.createModel('# 新文档\n', 'markdown', uri);
-
-            const cache = modelCacheRef.current;
-            if (cache.has(roomId)) cache.delete(roomId);
-            cache.set(roomId, model);
-            ensureModelCacheLimit();
-            editor.setModel(model);
-            editor.updateOptions?.({ readOnly: true });
-            setEditingEnabled(false);
-
-            // fetch backend content first
-            const res = await getContent(roomId);
-            const backendContent = res?.content ?? '# 新文档\n';
-            model.setValue(backendContent);
-
-            if (mySwitch !== switchCounterRef.current) {
-                setLoading(false);
+            const canView = await checkViewPermission(selectedRoom);
+            setHasAccess(canView);
+            if (!canView) {
+                message.warning('您没有该文档的查看权限');
                 return;
             }
+            const res = await getContent(selectedRoom);
+            const remote = res?.content ?? '';
+            // set editor value
+            if (editorRef.current) {
+                // replace full text safely
+                editorRef.current.setValue(remote);
+            }
+            setEditorText(remote);
 
-            // init Yjs
-            const ydoc = new Y.Doc();
-            const provider = new WebsocketProvider('ws://localhost:1234', roomId, ydoc);
-            ydocRef.current = ydoc;
-            providerRef.current = provider;
-
-            provider.awareness.setLocalStateField('user', {
-                id: userIdRef.current,
-                name: userIdRef.current,
-                color: '#8ab4f8',
-            });
-
-            provider.on?.('status', (ev: any) => {
-                setConnectionStatus(ev.status);
-                if (ev.status === 'connected') {
-                    const yText = ydoc.getText('monaco');
-                    if (yText.length === 0) {
-                        yText.insert(0, model.getValue()); // 将后端内容初始化到 yText
-                    }
-                }
-            });
-
-            const yText = ydoc.getText('monaco');
-            const binding = new MonacoBinding(yText, model, new Set([editor]), provider.awareness);
-            bindingRef.current = binding;
-
-            // observe yText -> update preview
-            const onYText = () => setEditorText(yText.toString());
-            yText.observe?.(onYText);
-
-            // awareness -> peers
-            const onAwarenessChange = () => {
-                const states = provider.awareness.getStates();
-                setPeers(states ? states.size : 0);
-            };
-            provider.awareness.on?.('change', onAwarenessChange);
-            onAwarenessChange();
-
-            setConnectedRoom(roomId);
-            setLoading(false);
+            /////connect
+            await new Promise(resolve => setTimeout(resolve, 300))
+            setConnectionStatus('connected')
+            message.success('同步完成');
         } catch (e) {
-            console.error('attachToRoom error', e);
+            console.error('handleSync error', e);
+            message.error('同步失败');
+        } finally {
             setLoading(false);
-            setConnectionStatus('disconnected');
         }
     };
 
-    // -------------------- editor mount --------------------
-    const handleEditorMount: OnMount = (editor, monaco) => {
-        editorRef.current = editor;
-        monacoRef.current = monaco;
+    // -------------------- Save (push editor -> remote) --------------------
+    const handleSaveButtonClick = async () => {
+        if (!selectedRoom) {
+            message.warning('请先选择一个文档再保存');
+            return;
+        }
+        try {
+            const content = editorRef.current ? editorRef.current.getValue() : editorText;
+            await saveContent({ room_id: selectedRoom, content });
+            message.success('保存成功');
+        } catch (e) {
+            console.error('saveContent error', e);
+            message.error('保存失败');
+        }
     };
 
-    // -------------------- edit / save --------------------
+    // -------------------- Edit enable/disable --------------------
     const handleEditButtonClick = async () => {
         if (!selectedRoom) return;
         const ok = await checkEditPermission(selectedRoom, userId);
@@ -250,81 +184,54 @@ const MainPage: React.FC = () => {
             setEditingEnabled(false);
             return;
         }
+        // enable editing
         editorRef.current?.updateOptions?.({ readOnly: false });
-        editorRef.current?.focus?.();
+        editorRef.current?.focus();
         setEditingEnabled(true);
     };
 
-    const handleSaveButtonClick = async () => {
-        if (!selectedRoom || !ydocRef.current) return;
-        try {
-            const yText = ydocRef.current.getText('monaco');
-            const content = yText.toString(); // 可替换为 encodeStateAsUpdate(ydocRef.current) 序列化
-            await saveContent({ room_id: selectedRoom, content });
-            message.success('保存成功');
-        } catch (e) {
-            console.error('saveContent error', e);
-            message.error('保存失败');
-        }
-    };
-
-    // -------------------- permissions --------------------
-    const checkViewPermission = async (roomId: string | null): Promise<boolean> => {
-        if (!roomId) return false;
-        try {
-            const res = await getReadPermission(roomId, userId);
-            console.log('view', res);
-            return !!res;
-        } catch {
-            return false;
-        }
-    };
-    const checkEditPermission = async (roomId: string | null, userId?: string): Promise<boolean> => {
-        if (!roomId) return false;
-        try {
-            const res = await getEditPermission(roomId, userId);
-            console.log('edit', res);
-            return !!res;
-        } catch {
-            return false;
-        }
-    };
-
-    // -------------------- watch selectedRoom --------------------
+    // -------------------- handle selectedRoom changes --------------------
     useEffect(() => {
         if (!selectedRoom) {
-            cleanupCollab();
-            setConnectedRoom(null);
+            // clear editor/preview but do not auto-sync
+            try {
+                if (editorRef.current) {
+                    editorRef.current.setValue('');
+                }
+            } catch (e) { /* ignore */ }
+            setEditorText('');
             setHasAccess(true);
             setEditingEnabled(false);
             return;
         }
 
-        (async () => {
-            const ok = await checkViewPermission(selectedRoom, userId);
-            setHasAccess(ok);
-            if (!ok) {
-                cleanupCollab();
-                setConnectedRoom(null);
-                setLoading(false);
-                setEditingEnabled(false);
-                return;
+        // on selection change we do NOT auto-sync (per your request).
+        // You can optionally auto-clear editor or keep previous content — we clear here.
+        try {
+            if (editorRef.current) {
+                editorRef.current.setValue('');
             }
-            attachToRoom(selectedRoom);
-        })();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        } catch (e) { /* ignore */ }
+        setEditorText('');
+        setHasAccess(true);
+        setEditingEnabled(false);
     }, [selectedRoom]);
 
-    // -------------------- cleanup --------------------
+    // -------------------- editor change -> update preview text --------------------
+    // Use a small onDidChangeModelContent listener attached when mount
     useEffect(() => {
-        return () => {
-            cleanupCollab();
-            modelCacheRef.current.forEach((m) => m.dispose?.());
-            modelCacheRef.current.clear();
-        };
-    }, []);
+        const editor = editorRef.current;
+        if (!editor) return;
+        const disposable = editor.onDidChangeModelContent(() => {
+            try {
+                const v = editor.getValue();
+                setEditorText(v);
+            } catch (e) { /* ignore */ }
+        });
+        return () => disposable.dispose();
+    }, [editorRef.current]);
 
-    // -------------------- SiderMenu props --------------------
+    // -------------------- SiderMenu helpers --------------------
     const groupRoomsByUser = (rooms: Room[]): SiderMenuItem[] => {
         const map = new Map<string, Room[]>();
         rooms.forEach((room) => {
@@ -333,17 +240,19 @@ const MainPage: React.FC = () => {
         });
         const items: SiderMenuItem[] = [];
         map.forEach((rooms, username) => {
-            const children = rooms.map((room) => getItem(room.room_name, `room-${room.room_id}`));
+            const children = rooms.map((room) => getItem(room.room_name, `${room.room_id}`));
             items.push(getItem(username, `user-${username}`, <UserOutlined />, children));
         });
         return items;
     };
 
     const mapRoomsToMenuItems = (rooms: Room[]): SiderMenuItem[] => {
-        return rooms.map((room) => getItem(room.room_name, `room-${room.room_id}`, <FileOutlined />));
+        return rooms.map((room) => getItem(room.room_name, `${room.room_id}`, <FileOutlined />));
     };
 
-    const filteredItems = useMemo(() => {
+    // search filter
+    const [searchText, setSearchText] = useState('');
+    const filteredItems = React.useMemo(() => {
         const filterMenu = (items: SiderMenuItem[]): SiderMenuItem[] =>
             items
                 .map((item) => {
@@ -368,8 +277,10 @@ const MainPage: React.FC = () => {
         setSearchText,
         filteredItems,
         setSelectedRoom,
+        handleSyncButtonClick
     };
 
+    // -------------------- content & header props --------------------
     const contentWithEditorAndPreviewProps = {
         editorText,
         showPreview,
@@ -384,29 +295,46 @@ const MainPage: React.FC = () => {
         { key: 'logout', label: '退出登录' },
     ];
 
+    const displayName = userId || email || 'User';
+    const avatarInitial = displayName.charAt(0).toUpperCase();
+    const avatarColor = (s: string) => {
+        let h = 0;
+        for (let i = 0; i < s.length; i++) h = (h << 5) - h + s.charCodeAt(i);
+        return `hsl(${Math.abs(h) % 360} 70% 45%)`;
+    };
+
     const homeHeaderProps = {
         title: 'Markdown 实时协作编辑器',
         selectedRoom,
         connectionStatus,
-        peers,
+        peers: 0,
         showPreview,
         setShowPreview,
         hasAccess,
         onEditClick: handleEditButtonClick,
         onSaveClick: handleSaveButtonClick,
+        // add Sync button handler to header props if you want header to show sync button
+        onSyncClick: handleSyncButtonClick,
         editingEnabled,
         avatarInitial,
         avatarColor: avatarColor(displayName),
         accountMenuItems,
         handleAccountMenuClick: ({ key }: any) => {
-            if (key === 'docs') navigate('../mydocs');
-            else if (key === 'logout') {
+            if (key === 'docs') {
+                navigate('../mydocs', {
+                    state: {
+                        userId: userId,
+                        email: email,
+                    },
+                });
+            } else if (key === 'logout') {
                 localStorage.removeItem('token');
                 window.location.href = '/login';
             }
         },
     };
 
+    // -------------------- render --------------------
     return (
         <Layout style={{ minHeight: '100vh' }}>
             <SiderMenu {...siderMenuProps} />

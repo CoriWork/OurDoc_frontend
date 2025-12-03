@@ -131,11 +131,24 @@ const HomeHeader: React.FC<HomeHeaderProps> = ({
                                                 : 'Disconnected'
                                     }
                                 >
-                                    <Badge
-                                        status={connectionStatus === 'connected' ? 'success' : connectionStatus === 'connecting' ? 'processing' : 'error'}
-                                    />
+                                    <span style={{
+                                        display: 'inline-block',
+                                        transform: 'scale(1.6)',
+                                        transformOrigin: 'center',
+                                        marginRight: 6
+                                    }}>
+              <Badge
+                  status={
+                      connectionStatus === 'connected'
+                          ? 'success'
+                          : connectionStatus === 'connecting'
+                              ? 'processing'
+                              : 'error'
+                  }
+              />
+            </span>
                                 </Tooltip>
-                                <span style={{color: '#fff'}}>Peers: {peers}</span>
+                                {/*<span style={{color: '#fff'}}>Peers: {peers}</span>*/}
                             </Space>
                         </>
                     ) : null}
